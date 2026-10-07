@@ -7,7 +7,7 @@
 - Họ tên: Nguyễn Đức Anh
 - Mã sinh viên: 2A202602888
 
-- Nhà cung cấp và mô hình (`LAB_MODEL`, không ghi khóa API), nhiệt độ (`LAB_TEMPERATURE`), `recursion_limit`: OpenRouter (`openai/gpt-4o-mini`), `LAB_TEMPERATURE=0`, `recursion_limit=60`
+- Nhà cung cấp và mô hình (`LAB_MODEL`, không ghi khóa API), nhiệt độ (`LAB_TEMPERATURE`), `recursion_limit`: OpenAI (`openai:gpt-4o-mini`), `LAB_TEMPERATURE=0`, `recursion_limit=60`
 - Phiên bản Deep Agents (`pip show deepagents`), hệ điều hành, chạy trực tiếp hay trong Docker: `deepagents==0.7.21`, Windows 11, Chạy trực tiếp
 - Số lần chạy tác vụ đã dùng / ngân sách: 0 / 30
 - Commit của tag `freeze`: `7bb65d8`
@@ -59,17 +59,16 @@ Nhận xét: Nhóm lỗi E (Vi phạm quy ước tổ chức) chiếm đa số t
 
 ## 6. Self-evolving: skill do curator sinh (Phần 3)
 
-- Số lần chạy curator: 1 lần (`python -m lab.curator`), số skill bị xóa: 0 (Cả 3 skill đều đạt tiêu chuẩn `validate_skill`).
+- Số lần chạy curator: 2 lần (`python -m lab.curator`), số skill bị xóa: 3 (đã xóa 3 skill cũ sau lần chạy 1 để thay thế bằng 3 skill mới sắc bén hơn, đạt chuẩn Acme House Rules). Cả 3 skill mới đều đạt tiêu chuẩn `validate_skill`.
 
 | Skill | Tổng quát hay riêng cho tác vụ học? | Đúng hay sai (nêu chỗ sai nếu có) | Độ dài, `description` và `skills_read` ở Phần 3.4 |
 |---|---|---|---|
-| `validate-test-files` | Tổng quát | Đúng (hướng dẫn giữ test độc lập và tạo file mới thay vì sửa test cũ) | 10 dòng, `description: Use this skill to ensure that test files are not modified and adhere to the required structure.` |
-| `handle-syntax-errors` | Tổng quát | Đúng (hướng dẫn tránh f-string backslash và chạy linter kiểm tra) | 10 dòng, `description: Use this skill to identify and resolve syntax errors in code before execution.` |
-| `ensure-data-integrity` | Tổng quát | Đúng (hướng dẫn xử lý giá trị null, chuẩn hóa múi giờ và region name) | 10 dòng, `description: Use this skill to validate and clean data before processing it.` |
+| `enforce-test-standards` | Tổng quát | Đúng (hướng dẫn không sửa test gốc, thêm type hints, tạo file `test_regressions.py` và ghi `CHANGELOG.md`) | 9 dòng, `description: Use this skill to ensure that all tests adhere to established standards and guidelines.` |
+| `validate-data-output` | Tổng quát | Đúng (hướng dẫn tiền dạng integer cents, đính kèm metadata `source`/`row counts`, chuẩn hóa region) | 9 dòng, `description: Use this skill to ensure that data outputs conform to specified formats and requirements.` |
+| `log-formatting-and-validation` | Tổng quát | Đúng (hướng dẫn timestamp UTC, schema version, exception không null, format service name) | 11 dòng, `description: Use this skill to ensure that log entries are formatted and validated according to specifications.` |
 
 ## 7. Kết quả so sánh (Phần 4.3, 4.4)
 
-```markdown
 | Task | baseline | subagents | skills-auto |
 |---|---|---|---|
 | code-learn | 1/10 | 4/10 | 0/10 |
@@ -80,20 +79,19 @@ Nhận xét: Nhóm lỗi E (Vi phạm quy ước tổ chức) chiếm đa số t
 | logs-eval | 0/10 | - | - |
 | **Mean score - learning tasks** | 0.07 | 0.17 | 0.00 |
 | **Mean score - evaluation tasks** | 0.03 | - | - |
-| **Mean tokens per run** | 22,047 | 65,158 | 1,091 |
+| **Mean tokens per run** | 13,640 | 27,749 | 12,888 |
 | **Runs that read a skill** | 0/6 | 0/3 | 0/3 |
-```
 
 Kết quả thống kê `check_breakdown.py`:
 ```text
 condition     role    technical  house rules  mean tokens  read a skill
-baseline      eval      1/18         0/12          19,697      0/3     
+baseline      eval      1/18         0/12           2,881      0/3     
 baseline      learn     2/18         0/9           24,398      0/3     
-subagents     learn     5/18         0/9           65,158      0/3     
-skills-auto   learn     0/18         0/9            1,091      0/3     
+subagents     learn     5/18         0/9           27,749      0/3     
+skills-auto   learn     0/18         0/9           12,888      0/3     
 ```
 
-*Ghi chú về lỗi chạy*: Một số lần chạy gặp `APIStatusError: Error code 402` do vượt quá in-flight credit budget của OpenRouter. Đã khắc phục bằng cách đặt `max_tokens=2048` trong `src/lab/model.py`.
+*Ghi chú về lỗi chạy*: Một số lần chạy gặp `APIStatusError: Error code 402` do OpenRouter tính hạn ngạch in-flight credit budget dựa trên `max_tokens`. Đã xử lý bằng cách đặt `max_tokens=1024` trong `src/lab/model.py` và thêm cơ chế retry tự động trong `src/lab/runner.py`.
 
 ## 8. Phân tích
 

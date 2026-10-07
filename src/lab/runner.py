@@ -12,12 +12,29 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from langchain_core.callbacks import UsageMetadataCallbackHandler
+from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, ToolMessage
 
 from .agent import build_agent
 from .grading import grade                                                      # có sẵn
 from .tasks import ROOT, get_task, hash_dir, list_tasks, prepare_sandbox         # có sẵn
+
+
+class MessageCollector(BaseCallbackHandler):
+    """Callback to collect messages as they are produced."""
+    def __init__(self):
+        super().__init__()
+        self.messages = []
+
+    def on_chat_model_end(self, response, **kwargs):
+        for gen in getattr(response, "generations", []):
+            for g in gen:
+                if hasattr(g, "message"):
+                    self.messages.append(g.message)
+
+    def on_tool_end(self, output, **kwargs):
+        self.messages.append(ToolMessage(content=str(output), tool_call_id=kwargs.get("tool_call_id", "")))
+
 
 # Ba điều kiện thí nghiệm (condition). `skills_dir` là thư mục skill nguồn (tính từ thư mục gốc của lab).
 CONDITIONS = {
@@ -52,7 +69,7 @@ def render_trace(messages) -> str:
     return "\n\n".join(parts)
 
 
-def run_task(task_id: str, condition: str, results_dir="results", model=None, recursion_limit: int = 60) -> dict:
+def run_task(task_id: str, condition: str, results_dir="results", model=None, recursion_limit: int = 80) -> dict:
     """Chạy MỘT tác vụ dưới MỘT điều kiện, chấm điểm, ghi kết quả, và trả về bản ghi (record)."""
     if condition not in CONDITIONS:
         raise ValueError(f"Invalid condition: {condition}. Must be one of {list(CONDITIONS)}.")
@@ -90,18 +107,30 @@ def run_task(task_id: str, condition: str, results_dir="results", model=None, re
         )
 
         usage = UsageMetadataCallbackHandler()
+        collector = MessageCollector()
         t0 = time.time()
 
-        try:
-            result = agent.invoke(
-                {"messages": [{"role": "user", "content": task.instruction}]},
-                config={"callbacks": [usage], "recursion_limit": recursion_limit},
-            )
-            messages = result.get("messages", [])
-            if messages:
-                final_message = str(messages[-1].content) if hasattr(messages[-1], "content") else ""
-        except Exception as exc:
-            record["error"] = f"{type(exc).__name__}: {exc}"
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                result = agent.invoke(
+                    {"messages": [{"role": "user", "content": task.instruction}]},
+                    config={"callbacks": [usage, collector], "recursion_limit": recursion_limit},
+                )
+                messages = result.get("messages", [])
+                if messages:
+                    final_message = str(messages[-1].content) if hasattr(messages[-1], "content") else ""
+                record["error"] = None
+                break
+            except Exception as exc:
+                record["error"] = f"{type(exc).__name__}: {exc}"
+                if not messages and collector.messages:
+                    messages = collector.messages
+                if any(err_kw in str(exc) for err_kw in ("402", "429", "in_flight", "RateLimit", "credit")):
+                    if attempt < max_retries - 1:
+                        time.sleep(15 * (attempt + 1))
+                        continue
+                break
 
         elapsed = round(time.time() - t0, 1)
         record["seconds"] = elapsed
@@ -166,7 +195,7 @@ def main(argv=None):
     ap.add_argument("--condition", required=True, choices=sorted(CONDITIONS))
     ap.add_argument("--tasks", nargs="+", default=["all"], help="task ids, or 'all', 'learn', 'eval'")
     ap.add_argument("--results", default="results")
-    ap.add_argument("--recursion-limit", type=int, default=60)
+    ap.add_argument("--recursion-limit", type=int, default=80)
     args = ap.parse_args(argv)
     if args.tasks == ["all"]:
         ids = [t.id for t in list_tasks()]
