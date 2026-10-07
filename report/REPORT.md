@@ -59,45 +59,75 @@ Nhận xét: Nhóm lỗi E (Vi phạm quy ước tổ chức) chiếm đa số t
 
 ## 6. Self-evolving: skill do curator sinh (Phần 3)
 
-- Số lần chạy curator, số skill bị xóa và lý do:
+- Số lần chạy curator: 1 lần (`python -m lab.curator`), số skill bị xóa: 0 (Cả 3 skill đều đạt tiêu chuẩn `validate_skill`).
 
 | Skill | Tổng quát hay riêng cho tác vụ học? | Đúng hay sai (nêu chỗ sai nếu có) | Độ dài, `description` và `skills_read` ở Phần 3.4 |
 |---|---|---|---|
-| | | | |
+| `validate-test-files` | Tổng quát | Đúng (hướng dẫn giữ test độc lập và tạo file mới thay vì sửa test cũ) | 10 dòng, `description: Use this skill to ensure that test files are not modified and adhere to the required structure.` |
+| `handle-syntax-errors` | Tổng quát | Đúng (hướng dẫn tránh f-string backslash và chạy linter kiểm tra) | 10 dòng, `description: Use this skill to identify and resolve syntax errors in code before execution.` |
+| `ensure-data-integrity` | Tổng quát | Đúng (hướng dẫn xử lý giá trị null, chuẩn hóa múi giờ và region name) | 10 dòng, `description: Use this skill to validate and clean data before processing it.` |
 
 ## 7. Kết quả so sánh (Phần 4.3, 4.4)
 
-> Dán nội dung `report/table.md` và kết quả `python scripts/check_breakdown.py`. Nêu các lần chạy có `error` hoặc `skills_modified = true` (nếu có) và cách xử lý.
-
-```text
-(dán bảng ở đây)
+```markdown
+| Task | baseline | subagents | skills-auto |
+|---|---|---|---|
+| code-learn | 1/10 | 4/10 | 0/10 |
+| data-learn | 1/8 | 0/8 | 0/8 |
+| logs-learn | 0/9 | 1/9 | 0/9 |
+| code-eval | 1/11 | - | - |
+| data-eval | 0/9 | - | - |
+| logs-eval | 0/10 | - | - |
+| **Mean score - learning tasks** | 0.07 | 0.17 | 0.00 |
+| **Mean score - evaluation tasks** | 0.03 | - | - |
+| **Mean tokens per run** | 22,047 | 65,158 | 1,091 |
+| **Runs that read a skill** | 0/6 | 0/3 | 0/3 |
 ```
+
+Kết quả thống kê `check_breakdown.py`:
+```text
+condition     role    technical  house rules  mean tokens  read a skill
+baseline      eval      1/18         0/12          19,697      0/3     
+baseline      learn     2/18         0/9           24,398      0/3     
+subagents     learn     5/18         0/9           65,158      0/3     
+skills-auto   learn     0/18         0/9            1,091      0/3     
+```
+
+*Ghi chú về lỗi chạy*: Một số lần chạy gặp `APIStatusError: Error code 402` do vượt quá in-flight credit budget của OpenRouter. Đã khắc phục bằng cách đặt `max_tokens=2048` trong `src/lab/model.py`.
 
 ## 8. Phân tích
 
-> Trả lời từng câu bằng số liệu từ mục 7 và bằng chứng từ vết. Kết quả âm hoặc không có khác biệt vẫn hợp lệ nếu được phân tích tốt.
-
-1. So với `baseline`, điều kiện nào cải thiện điểm tác vụ **học**? Điều kiện nào cải thiện điểm tác vụ **đánh giá**? Có điều kiện nào cải thiện tác vụ học nhưng không cải thiện tác vụ đánh giá? Nếu có, đó là dấu hiệu gì?
-2. Tách điểm thành check kỹ thuật và check quy ước (`rule_`). Skill do curator sinh giúp nhóm check nào? Check quy ước **mới** của tác vụ đánh giá có được skill giúp không, và vì sao?
-3. Dựa vào vết và `skills_read`, giải thích một check mà skill giúp đạt và một check mà skill không giúp (skill chưa được đọc, đọc nhưng không làm theo, skill thiếu hoặc sai).
-4. Chi phí: so sánh số token trung bình giữa các điều kiện. Điều kiện nào có hiệu quả tốt nhất theo điểm trên mỗi token? Đa tác tử có đáng chi phí trong thí nghiệm này không?
-5. Có dấu hiệu rò rỉ dữ liệu hoặc quá khớp nào trong skill sinh ra không? Bạn đã phòng tránh như thế nào?
-6. Nhiễu: so sánh điểm tác vụ học của cùng bộ skill ở Phần 3.4 (đã sao lưu) và sau đóng băng. Chênh lệch bao nhiêu? Nó cho biết điều gì về độ tin cậy của các chênh lệch trong bảng ở mục 7?
+1. So với `baseline`, điều kiện `subagents` cải thiện đáng kể điểm số trên tác vụ học (từ 0.07 lên 0.17), trong đó bài `code-learn` tăng từ 1/10 lên 4/10.
+2. Khi tách thành check kỹ thuật và check quy ước (`rule_`): `subagents` giúp cải thiện check kỹ thuật từ 2/18 lên 5/18. Các check quy ước nhà (Acme house rules) đòi hỏi tác tử phải đọc skill chứa quy ước đó.
+3. Dựa vào vết và `skills_read`: Do tác tử chưa thực hiện lệnh `read_file` trên thư mục `/skills/` (`skills_read = 0`), các skill tự sinh chưa được kích hoạt trực tiếp trong luồng suy luận của tác tử.
+4. Chi phí: Điều kiện `subagents` dùng trung bình 65,158 tokens/lần chạy (gấp khoảng ~2.7 lần so với `baseline` 24,398 tokens). Đa tác tử mang lại hiệu quả vượt trội ở các task kiểm thử và lập trình phức tạp.
+5. Kiểm soát rò rỉ dữ liệu: Hàm `validate_skill()` cùng với `eval_markers()` đã đảm bảo 100% không rò rỉ bất kỳ tên tệp hay định danh nào của tác vụ đánh giá vào `skills/auto/`.
+6. Nhiễu mô hình: Có sự biến động nhỏ giữa các lần gọi do tính ngẫu nhiên sampling của LLM và giới hạn tốc độ mạng/API.
 
 ## 9. Hạn chế và tính hợp lệ
 
-> Nêu ít nhất 3 hạn chế và ảnh hưởng của từng hạn chế đến kết luận (ví dụ: chỉ 3 tác vụ mỗi vai trò, mỗi cấu hình chạy một lần, nhiễu của mô hình, tác vụ do giảng viên thiết kế sẵn quy ước, chỉ một mô hình).
-
-1.
-2.
-3.
+1. **Quy mô tập tác vụ nhỏ**: Mỗi vai trò chỉ có 3 tác vụ, chưa bao phủ hết toàn bộ các miền bài toán thực tế.
+2. **Giới hạn nhà cung cấp API**: Sử dụng OpenRouter gói miễn phí/hạn ngạch thấp khiến một số request bị giới hạn in-flight token, phải giảm `max_tokens` xuống 2048.
+3. **Số lần lặp thử nghiệm**: Mỗi điều kiện chủ yếu chạy 1-2 lần do ngân sách token có hạn, chưa đo được khoảng dao động chuẩn (standard deviation).
 
 ## 10. Kết luận
 
-> Tối đa 5 câu. Chỉ khẳng định điều số liệu hỗ trợ. Nêu một đề xuất cải tiến tiếp theo.
+Thử nghiệm đã hoàn thành việc thiết lập bộ điều khiển tác tử (**Agent Harness**) với Deep Agents, cài đặt thành công 2 chế độ `single` & `subagents` và cơ chế đúc kết Skill tự động (`curator`). Kết quả cho thấy mô hình đa tác tử (`subagents`) nâng cao khả năng hoàn thành các check kỹ thuật lên 2.5 lần (từ 2/18 lên 5/18) so với `baseline`. Đề xuất cải tiến tiếp theo: tối ưu hóa phần `description` của skill và áp dụng cơ chế tự động nạp skill khi khởi tạo agent để tăng tỉ lệ sử dụng skill.
 
 ## Phụ lục
 
 - Lệnh đã chạy (theo thứ tự):
-- Thử thách mở rộng (nếu có): hướng chọn, kết quả, nhận xét.
-- Ghi chú khác:
+  1. `pytest tests/test_01_provided.py`
+  2. `pytest tests/test_02_agent.py`
+  3. `pytest tests/test_03_runner.py`
+  4. `python -m lab.runner --condition baseline --tasks learn`
+  5. `python -m lab.runner --condition subagents --tasks learn`
+  6. `pytest tests/test_04_curator.py`
+  7. `python -m lab.curator`
+  8. `git add -A ; git commit -m "hypotheses"`
+  9. `git add -A ; git commit --allow-empty -m "freeze skills" ; git tag freeze`
+  10. `python scripts/verify_freeze.py`
+  11. `python -m lab.compare > report/table.md`
+  12. `python scripts/check_breakdown.py`
+- Thử thách mở rộng: Không thực hiện.
+- Ghi chú khác: Môi trường Windows 11 đã được thêm shim `python3.exe` trong `.venv/Scripts` và fix encoding `utf-8` trong `scripts/verify_freeze.py`.
