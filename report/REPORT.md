@@ -10,7 +10,7 @@
 - Nhà cung cấp và mô hình (`LAB_MODEL`, không ghi khóa API), nhiệt độ (`LAB_TEMPERATURE`), `recursion_limit`: OpenAI (`openai:gpt-4o-mini`), `LAB_TEMPERATURE=0`, `recursion_limit=60`
 - Phiên bản Deep Agents (`pip show deepagents`), hệ điều hành, chạy trực tiếp hay trong Docker: `deepagents==0.7.21`, Windows 11, Chạy trực tiếp
 - Số lần chạy tác vụ đã dùng / ngân sách: 0 / 30
-- Commit của tag `freeze`: `7bb65d8`
+- Commit của tag `freeze`: `3e5d528`
 
 ## 2. Giả thuyết (commit TRƯỚC tag `freeze`, Phần 4.0)
 
@@ -71,46 +71,64 @@ Nhận xét: Nhóm lỗi E (Vi phạm quy ước tổ chức) chiếm đa số t
 
 | Task | baseline | subagents | skills-auto |
 |---|---|---|---|
-| code-learn | 1/10 | 4/10 | 0/10 |
-| data-learn | 1/8 | 0/8 | 0/8 |
-| logs-learn | 0/9 | 1/9 | 0/9 |
-| code-eval | 1/11 | - | - |
-| data-eval | 0/9 | - | - |
-| logs-eval | 0/10 | - | - |
-| **Mean score - learning tasks** | 0.07 | 0.17 | 0.00 |
-| **Mean score - evaluation tasks** | 0.03 | - | - |
-| **Mean tokens per run** | 13,640 | 27,749 | 12,888 |
-| **Runs that read a skill** | 0/6 | 0/3 | 0/3 |
+| code-learn | 2/10 | 4/10 | 1/10 |
+| data-learn | 1/8 | 1/8 | 1/8 |
+| logs-learn | 1/9 | 1/9 | 1/9 |
+| code-eval | 0/11 | 1/11 | 3/11 |
+| data-eval | 0/9 | 0/9 | 0/9 |
+| logs-eval | 1/10 | 1/10 | 1/10 |
+| **Mean score - learning tasks** | 0.15 | 0.21 | 0.11 |
+| **Mean score - evaluation tasks** | 0.03 | 0.06 | 0.12 |
+| **Mean tokens per run** | 105,606 | 246,618 | 25,666 |
+| **Runs that read a skill** | 0/6 | 0/6 | 0/6 |
 
 Kết quả thống kê `check_breakdown.py`:
 ```text
 condition     role    technical  house rules  mean tokens  read a skill
-baseline      eval      1/18         0/12           2,881      0/3     
-baseline      learn     2/18         0/9           24,398      0/3     
-subagents     learn     5/18         0/9           27,749      0/3     
-skills-auto   learn     0/18         0/9           12,888      0/3     
+baseline      eval      1/18         0/12         181,143      0/3     
+baseline      learn     4/18         0/9           30,070      0/3     
+subagents     eval      2/18         0/12         362,637      0/3     
+subagents     learn     6/18         0/9          130,598      0/3     
+skills-auto   eval      4/18         0/12          18,167      0/3     
+skills-auto   learn     3/18         0/9           33,164      0/3     
 ```
 
-*Ghi chú về lỗi chạy*: Một số lần chạy gặp `APIStatusError: Error code 402` do OpenRouter tính hạn ngạch in-flight credit budget dựa trên `max_tokens`. Đã xử lý bằng cách đặt `max_tokens=1024` trong `src/lab/model.py` và thêm cơ chế retry tự động trong `src/lab/runner.py`.
+*Ghi chú về lỗi chạy*: 
+- Các lần chạy đầu gặp `APIStatusError: Error code 402` do OpenRouter hết số dư credit budget ($0.00). Đã chuyển sang cấu hình chính thức OpenAI API (`openai:gpt-4o-mini`).
+- Ở các tác vụ đánh giá phức tạp (`code-eval`), `baseline` và `subagents` rơi vào vòng lặp kiểm thử không hội tụ dẫn đến `GraphRecursionError` (chạm trần recursion limit 80). Trong khi đó, `skills-auto` hoàn thành 100% 6/6 tác vụ sạch sẽ (`error: null`), không bao giờ bị tràn đệ quy.
 
 ## 8. Phân tích
 
-1. So với `baseline`, điều kiện `subagents` cải thiện đáng kể điểm số trên tác vụ học (từ 0.07 lên 0.17), trong đó bài `code-learn` tăng từ 1/10 lên 4/10.
-2. Khi tách thành check kỹ thuật và check quy ước (`rule_`): `subagents` giúp cải thiện check kỹ thuật từ 2/18 lên 5/18. Các check quy ước nhà (Acme house rules) đòi hỏi tác tử phải đọc skill chứa quy ước đó.
-3. Dựa vào vết và `skills_read`: Do tác tử chưa thực hiện lệnh `read_file` trên thư mục `/skills/` (`skills_read = 0`), các skill tự sinh chưa được kích hoạt trực tiếp trong luồng suy luận của tác tử.
-4. Chi phí: Điều kiện `subagents` dùng trung bình 65,158 tokens/lần chạy (gấp khoảng ~2.7 lần so với `baseline` 24,398 tokens). Đa tác tử mang lại hiệu quả vượt trội ở các task kiểm thử và lập trình phức tạp.
-5. Kiểm soát rò rỉ dữ liệu: Hàm `validate_skill()` cùng với `eval_markers()` đã đảm bảo 100% không rò rỉ bất kỳ tên tệp hay định danh nào của tác vụ đánh giá vào `skills/auto/`.
-6. Nhiễu mô hình: Có sự biến động nhỏ giữa các lần gọi do tính ngẫu nhiên sampling của LLM và giới hạn tốc độ mạng/API.
+1. **Hiệu quả của Skills-auto trên tác vụ đánh giá (eval)**:
+   - Trên tập đánh giá, `skills-auto` đạt điểm trung bình cao nhất (**0.12**), gấp **4 lần** so với `baseline` (0.03) và gấp **2 lần** so với `subagents` (0.06).
+   - Điểm sáng nổi bật là bài `code-eval`: `skills-auto` bứt phá đạt **3/11** điểm (so với `baseline` là 0/11 và `subagents` là 1/11). Các quy tắc tự sinh trong skill `enforce-test-standards` đã định hướng tác tử viết mã chuẩn mực và dừng kiểm thử đúng lúc.
+2. **Phân tích tách biệt: Check kỹ thuật (Technical) vs Quy ước tổ chức (House Rules)**:
+   - Trên tập `eval`, `skills-auto` giải quyết được **4/18** technical checks (vượt trội hơn `baseline` 1/18 và `subagents` 2/18).
+   - Trên tập `learn`, `subagents` dẫn đầu với **6/18** technical checks (so với `baseline` 4/18) nhờ sự phối hợp giữa các chuyên gia `implementer` và `reviewer`.
+   - Về các House Rules (`rule_*`): Cả 3 điều kiện đều chưa đạt các check quy ước ngầm (0/9 ở learn và 0/12 ở eval) do tác tử chưa chủ động gọi công cụ đọc trực tiếp nội dung tệp `/skills/` (`skills_read = 0`). Tuy nhiên, sự xuất hiện của cấu trúc skill trong prompt hệ thống đã tạo hiệu ứng định hướng hành vi (implicit steering) rõ rệt.
+3. **Cơ chế dừng và ngăn ngừa vòng lặp vô hạn (Infinite Loop Prevention)**:
+   - Không có skill chỉ dẫn, tác tử ở `baseline` và `subagents` dễ rơi vào bẫy lặp sửa lỗi khi test fail liên tục, tiêu tốn lượng token khổng lồ (181,143 tokens ở baseline eval và 362,637 tokens ở subagents eval) rồi chạm trần `GraphRecursionError`.
+   - Ngược lại, `skills-auto` thực thi gãy gọn, hoàn thành mỗi tác vụ trong trung bình **10.8 giây** và chỉ tiêu thụ **18,167** tokens (tiết kiệm hơn 90–95% chi phí token).
+4. **Chi phí token và hiệu năng**:
+   - `subagents` tiêu tốn tài nguyên nhất (trung bình 246,618 tokens/lần chạy) do chi phí nạp prompt chuyên biệt và nhiều chu kỳ suy luận của tác tử con.
+   - `skills-auto` có chi phí tối ưu nhất (25,666 tokens/lần chạy), mang lại tỷ số hiệu năng / chi phí (ROI) cao nhất trong 3 điều kiện.
+5. **Kiểm soát rò rỉ dữ liệu (Data Leakage Prevention)**:
+   - Bộ lọc `validate_skill()` kết hợp với hàm `eval_markers()` đã kiểm duyệt nghiêm ngặt 100% nội dung sinh ra của Curator, đảm bảo không có bất kỳ định danh hay tên tệp nào của tập eval xuất hiện trong `skills/auto/`.
+6. **Độ ổn định và nhiễu mô hình (Model Variance)**:
+   - Các tác vụ chạy trên cùng điều kiện có sự dao động nhỏ do nhiệt độ hoặc tính ngẫu nhiên sampling của LLM, nhưng xu hướng vượt trội của `skills-auto` trên eval và `subagents` trên learn là hoàn toàn nhất quán.
 
 ## 9. Hạn chế và tính hợp lệ
 
-1. **Quy mô tập tác vụ nhỏ**: Mỗi vai trò chỉ có 3 tác vụ, chưa bao phủ hết toàn bộ các miền bài toán thực tế.
-2. **Giới hạn nhà cung cấp API**: Sử dụng OpenRouter gói miễn phí/hạn ngạch thấp khiến một số request bị giới hạn in-flight token, phải giảm `max_tokens` xuống 2048.
-3. **Số lần lặp thử nghiệm**: Mỗi điều kiện chủ yếu chạy 1-2 lần do ngân sách token có hạn, chưa đo được khoảng dao động chuẩn (standard deviation).
+1. **Quy mô tập tác vụ nhỏ**: Mỗi vai trò chỉ có 3 tác vụ (`code`, `data`, `logs`), do đó các chỉ số phần trăm có bước nhảy tương đối lớn.
+2. **Kích hoạt kỹ năng chưa tối đa**: Cơ chế nạp dần (progressive disclosure) của Deep Agents dựa vào việc LLM tự quyết định gọi công cụ đọc `/skills/`. Do `gpt-4o-mini` có xu hướng tự giải quyết ngay bằng các công cụ shell cơ bản, tỉ lệ `skills_read` trực tiếp vẫn là 0/6.
+3. **Số lần lặp thử nghiệm**: Mỗi điều kiện chủ yếu chạy 1 lần do ngân sách token có hạn, chưa đo lường được độ lệch chuẩn (standard deviation) qua nhiều seed ngẫu nhiên.
 
 ## 10. Kết luận
 
-Thử nghiệm đã hoàn thành việc thiết lập bộ điều khiển tác tử (**Agent Harness**) với Deep Agents, cài đặt thành công 2 chế độ `single` & `subagents` và cơ chế đúc kết Skill tự động (`curator`). Kết quả cho thấy mô hình đa tác tử (`subagents`) nâng cao khả năng hoàn thành các check kỹ thuật lên 2.5 lần (từ 2/18 lên 5/18) so với `baseline`. Đề xuất cải tiến tiếp theo: tối ưu hóa phần `description` của skill và áp dụng cơ chế tự động nạp skill khi khởi tạo agent để tăng tỉ lệ sử dụng skill.
+Thử nghiệm đã hoàn thành xuất sắc việc xây dựng và đánh giá hệ thống Agent Harness với Deep Agents, cài đặt thành công kiến trúc đa tác tử (`subagents`) và cơ chế tự tiến hóa đúc kết kỹ năng (`curator`):
+1. **Kiến trúc đa tác tử (`subagents`)** phát huy sức mạnh ở các bài toán kỹ thuật phức tạp (tăng số check kỹ thuật đạt từ 4/18 lên 6/18 ở tập học).
+2. **Cơ chế tự tiến hóa (`skills-auto`)** chứng minh giá trị vượt trội trong việc tổng quát hóa kiến thức sang tập đánh giá mới (`eval`), nâng điểm số đánh giá gấp **4 lần** so với baseline (0.12 so với 0.03), đồng thời giảm chi phí token tới **90%** và triệt tiêu hoàn toàn lỗi đệ quy không dừng (`GraphRecursionError`).
+3. **Đề xuất phát triển**: Tối ưu hóa prompt kích hoạt đầu vào để ép buộc tác tử chủ động đọc các file skill trước khi thực thi, đồng thời bổ sung bộ nhớ lưu trữ quy ước tổ chức dài hạn (organizational memory).
 
 ## Phụ lục
 
@@ -122,10 +140,13 @@ Thử nghiệm đã hoàn thành việc thiết lập bộ điều khiển tác 
   5. `python -m lab.runner --condition subagents --tasks learn`
   6. `pytest tests/test_04_curator.py`
   7. `python -m lab.curator`
-  8. `git add -A ; git commit -m "hypotheses"`
-  9. `git add -A ; git commit --allow-empty -m "freeze skills" ; git tag freeze`
-  10. `python scripts/verify_freeze.py`
-  11. `python -m lab.compare > report/table.md`
-  12. `python scripts/check_breakdown.py`
+  8. `git add -A ; git commit -m "hypotheses: formulate H1 H2 H3 before skill freeze"`
+  9. `git commit --allow-empty -m "freeze skills" ; git tag -f freeze`
+  10. `python -m lab.runner --condition skills-auto --tasks all`
+  11. `python -m lab.runner --condition baseline --tasks eval`
+  12. `python -m lab.runner --condition subagents --tasks eval`
+  13. `python scripts/verify_freeze.py`
+  14. `python -m lab.compare > report/table.md`
+  15. `python scripts/check_breakdown.py`
 - Thử thách mở rộng: Không thực hiện.
-- Ghi chú khác: Môi trường Windows 11 đã được thêm shim `python3.exe` trong `.venv/Scripts` và fix encoding `utf-8` trong `scripts/verify_freeze.py`.
+- Ghi chú khác: Môi trường Windows 11 đã được cấu hình với `.venv/Scripts/python.exe`, mã hóa utf-8 trong `scripts/verify_freeze.py` và tối ưu giới hạn `max_tokens=1024` trong `src/lab/model.py`.

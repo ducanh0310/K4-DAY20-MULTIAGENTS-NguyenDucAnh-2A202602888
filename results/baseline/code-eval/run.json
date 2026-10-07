@@ -3,13 +3,13 @@
   "condition": "baseline",
   "role": "eval",
   "error": "GraphRecursionError: Recursion limit of 80 reached without hitting a stop condition. You can increase the limit by setting the `recursion_limit` config key.\nFor troubleshooting, visit: https://docs.langchain.com/oss/python/langgraph/errors/GRAPH_RECURSION_LIMIT",
-  "timestamp": "2026-10-07T03:11:29.961625+00:00",
+  "timestamp": "2026-10-07T04:02:52.708970+00:00",
   "skills_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "seconds": 147.1,
+  "seconds": 168.6,
   "tokens": {
-    "input": 382467,
-    "output": 10629,
-    "total": 393096
+    "input": 467241,
+    "output": 14514,
+    "total": 481755
   },
   "tool_calls": 0,
   "subagent_calls": 0,
