@@ -10,7 +10,7 @@
 - Nhà cung cấp và mô hình (`LAB_MODEL`, không ghi khóa API), nhiệt độ (`LAB_TEMPERATURE`), `recursion_limit`: OpenRouter (`openai/gpt-4o-mini`), `LAB_TEMPERATURE=0`, `recursion_limit=60`
 - Phiên bản Deep Agents (`pip show deepagents`), hệ điều hành, chạy trực tiếp hay trong Docker: `deepagents==0.7.21`, Windows 11, Chạy trực tiếp
 - Số lần chạy tác vụ đã dùng / ngân sách: 0 / 30
-- Commit của tag `freeze`: *(Chưa đóng băng - sẽ cập nhật ở Phần 4)*
+- Commit của tag `freeze`: `7bb65d8`
 
 ## 2. Giả thuyết (commit TRƯỚC tag `freeze`, Phần 4.0)
 
