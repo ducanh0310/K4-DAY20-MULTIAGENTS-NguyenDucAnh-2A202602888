@@ -6,10 +6,16 @@ Chạy thật:   python -m lab.runner --condition baseline --tasks learn
 """
 import argparse
 import json
+import shutil
+import tempfile
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
+from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, ToolMessage
 
+from .agent import build_agent
 from .grading import grade                                                      # có sẵn
 from .tasks import ROOT, get_task, hash_dir, list_tasks, prepare_sandbox         # có sẵn
 
@@ -47,25 +53,108 @@ def render_trace(messages) -> str:
 
 
 def run_task(task_id: str, condition: str, results_dir="results", model=None, recursion_limit: int = 60) -> dict:
-    """Chạy MỘT tác vụ dưới MỘT điều kiện, chấm điểm, ghi kết quả, và trả về bản ghi (record).
+    """Chạy MỘT tác vụ dưới MỘT điều kiện, chấm điểm, ghi kết quả, và trả về bản ghi (record)."""
+    if condition not in CONDITIONS:
+        raise ValueError(f"Invalid condition: {condition}. Must be one of {list(CONDITIONS)}.")
 
-    Ghi vào: <results_dir>/<condition>/<task_id>/run.json và trace.md  (trace.md = render_trace(messages)).
-    Bản ghi `run.json` phải có các khóa:
-      task, condition, role, score, passed, total, checks,
-      tokens {input, output, total}       - cộng dồn mọi lần gọi LLM, kể cả subagent (dùng UsageMetadataCallbackHandler)
-      tool_calls                          - số tool call trong các AIMessage của luồng chính (không gồm việc bên trong subagent)
-      subagent_calls                      - số tool call có tên "task" (giao việc cho subagent)
-      skills_read                         - số skill KHÁC NHAU đã được đọc: với mỗi tool call "read_file" có file_path chứa
-                                            "skills/", lấy tên thư mục ngay sau "skills/" rồi đếm các tên khác nhau
-                                            (đọc lại cùng một skill chỉ tính một lần)
-      skills_modified (bool)              - thư mục skills trong sandbox bị đổi trong lúc chạy (so hash_dir trước/sau)
-      skills_sha256                       - hash_dir(sandbox/"skills") TRƯỚC khi chạy (để đối chiếu với skill đã đóng băng)
-      timestamp                           - thời điểm bắt đầu, UTC, dạng ISO-8601
-      seconds, final_message, error (None nếu không lỗi)
-    Lỗi khi chạy tác tử KHÔNG được làm chương trình dừng: ghi vào `error` và vẫn chấm điểm.
-    Sandbox là thư mục tạm NGOÀI kho mã nguồn và phải được xóa sau khi chạy.
-    """
-    raise NotImplementedError("TODO 1: cài đặt run_task (xem guides/pseudocode/03_runner.md)")
+    cfg = CONDITIONS[condition]
+    task = get_task(task_id)
+
+    skills_dir = ROOT / cfg["skills_dir"] if cfg["skills_dir"] else None
+    out_dir = Path(results_dir) / condition / task_id
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    sandbox_path = Path(tempfile.mkdtemp(prefix="lab_sandbox_"))
+
+    record = {
+        "task": task_id,
+        "condition": condition,
+        "role": task.role,
+        "error": None,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+    messages = []
+    final_message = ""
+    try:
+        prepare_sandbox(task, sandbox_path, skills_dir)
+        skills_folder = sandbox_path / "skills"
+        hash_before = hash_dir(skills_folder)
+        record["skills_sha256"] = hash_before
+
+        agent = build_agent(
+            sandbox_path,
+            mode=cfg["mode"],
+            use_skills=(skills_dir is not None),
+            model=model,
+        )
+
+        usage = UsageMetadataCallbackHandler()
+        t0 = time.time()
+
+        try:
+            result = agent.invoke(
+                {"messages": [{"role": "user", "content": task.instruction}]},
+                config={"callbacks": [usage], "recursion_limit": recursion_limit},
+            )
+            messages = result.get("messages", [])
+            if messages:
+                final_message = str(messages[-1].content) if hasattr(messages[-1], "content") else ""
+        except Exception as exc:
+            record["error"] = f"{type(exc).__name__}: {exc}"
+
+        elapsed = round(time.time() - t0, 1)
+        record["seconds"] = elapsed
+
+        usage_dict = getattr(usage, "usage_metadata", {}) or {}
+        input_tokens = sum(v.get("input_tokens", 0) for v in usage_dict.values())
+        output_tokens = sum(v.get("output_tokens", 0) for v in usage_dict.values())
+        total_tokens = sum(v.get("total_tokens", 0) for v in usage_dict.values())
+        record["tokens"] = {
+            "input": input_tokens,
+            "output": output_tokens,
+            "total": total_tokens,
+        }
+
+        calls_count = 0
+        subagent_calls_count = 0
+        skills_read_set = set()
+
+        for m in messages:
+            if isinstance(m, AIMessage):
+                tool_calls = getattr(m, "tool_calls", []) or []
+                calls_count += len(tool_calls)
+                for tc in tool_calls:
+                    tc_name = tc.get("name", "")
+                    if tc_name == "task":
+                        subagent_calls_count += 1
+                    elif tc_name == "read_file":
+                        fp = str(tc.get("args", {}).get("file_path", "")).replace("\\", "/")
+                        if "skills/" in fp:
+                            parts = fp.split("skills/")[1].split("/")
+                            if parts and parts[0]:
+                                skills_read_set.add(parts[0])
+
+        record["tool_calls"] = calls_count
+        record["subagent_calls"] = subagent_calls_count
+        record["skills_read"] = len(skills_read_set)
+
+        hash_after = hash_dir(skills_folder)
+        record["skills_modified"] = (hash_before != hash_after)
+        record["final_message"] = final_message
+
+        g = grade(task, sandbox_path / "workspace")
+        record["score"] = g["score"]
+        record["passed"] = g["passed"]
+        record["total"] = g["total"]
+        record["checks"] = g["checks"]
+
+        (out_dir / "trace.md").write_text(render_trace(messages), encoding="utf-8")
+    finally:
+        shutil.rmtree(sandbox_path, ignore_errors=True)
+
+    (out_dir / "run.json").write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
+    return record
 
 
 def main(argv=None):
