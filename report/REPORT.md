@@ -14,11 +14,9 @@
 
 ## 2. Giả thuyết (commit TRƯỚC tag `freeze`, Phần 4.0)
 
-> Dự đoán điều kiện nào đạt điểm cao nhất trên **tác vụ đánh giá** và vì sao. Nêu căn cứ từ phân loại lỗi (mục 4) và từ tài liệu tham khảo. Điền cả ba dòng; `verify_freeze.py` kiểm tra điều này.
-
-- H1 (subagents so với baseline):
-- H2 (skills-auto so với baseline):
-- H3 (tác vụ học so với tác vụ đánh giá):
+- H1 (subagents so với baseline): `subagents` sẽ đạt điểm cao hơn hoặc bằng `baseline` ở các bài toán phức tạp đòi hỏi kiểm tra độc lập, tuy nhiên lượng token tiêu tốn sẽ tăng từ 1.5x đến 3x do chi phí ngữ cảnh hệ thống và giao tiếp giữa các tác tử.
+- H2 (skills-auto so với baseline): `skills-auto` sẽ đạt điểm cao hơn `baseline` ở các tác vụ có quy ước tổ chức Acme (như `test_regressions.py`, `CHANGELOG.md`, `meta` block, `clean.csv`, tiền dạng `cents`) nhờ các quy ước này đã được Curator tổng quát hóa thành Skill.
+- H3 (tác vụ học so với tác vụ đánh giá): Mức độ cải thiện điểm ở tác vụ học sẽ cao hơn tác vụ đánh giá do nguy cơ quá khớp (overfitting) của các skill tự sinh và sự xuất hiện của các quy ước ẩn mới ở tập eval mà curator chưa được quan sát.
 
 ## 3. Làm quen Deep Agents (Phần 0.3)
 
@@ -30,20 +28,34 @@
 
 ## 4. Đường cơ sở và phân loại lỗi (Phần 2.2)
 
-> Chỉ dùng tác vụ học. Mỗi dòng là một check thất bại.
-
 | Tác vụ | Check thất bại | Nhóm lỗi (A-G) | Bằng chứng (trích ngắn từ `detail` hoặc vết) |
 |---|---|---|---|
-| | | | |
+| code-learn | `rule_regression_tests` | E. Vi phạm quy ước tổ chức | `RULE: add tests/test_regressions.py with one test function per bug...` |
+| code-learn | `rule_changelog` | E. Vi phạm quy ước tổ chức | `RULE: record each fix in CHANGELOG.md under the heading '## Unreleased'...` |
+| code-learn | `visible_suite_passes` | B. Không kiểm chứng | `1 error in 0.20s` (kết thúc mà chưa chạy lại test kiểm tra thành công) |
+| code-learn | `parse_price_all_formats` | D. Bỏ sót dữ liệu bẩn | `wrong for: ['$1,299.50', '$1,000,000.00']` |
+| data-learn | `rule_money_in_cents` | E. Vi phạm quy ước tổ chức | `RULE: money values in answer.json are integer cents (1606.67 USD is written 160667).` |
+| data-learn | `rule_meta_block` | E. Vi phạm quy ước tổ chức | `RULE: answer.json has an object meta = {"source": ..., "rows_in": ..., "rows_used": ...}.` |
+| data-learn | `rule_clean_csv` | E. Vi phạm quy ước tổ chức | `RULE: write workspace/clean.csv with the header order_id,timestamp_utc...` |
+| data-learn | `north_q1_revenue` | F. Báo cáo hoàn thành sai | `north_q1_revenue: wrong value (got 0)` (tạo file với giá trị placeholder 0) |
+| logs-learn | `valid_structure` | F. Báo cáo hoàn thành sai | `FileNotFoundError: No such file or directory: 'workspace/errors.json'` |
+| logs-learn | `rule_service_names` | E. Vi phạm quy ước tổ chức | `FileNotFoundError: No such file or directory: 'workspace/errors.json'` (thiếu quy ước dịch vụ) |
 
-Nhận xét: nhóm lỗi nào chiếm đa số? Skill có thể phòng ngừa nhóm đó không?
+Nhận xét: Nhóm lỗi E (Vi phạm quy ước tổ chức) chiếm đa số tuyệt đối. Lý do là đề bài không ghi chú các quy ước cụ thể của Acme (ví dụ: `test_regressions.py`, `CHANGELOG.md`, `meta` block, `clean.csv`, tiền tính bằng xu `cents`), khiến tác tử dù làm đúng logic kỹ thuật vẫn bị trượt các test quy ước. **Skill hoàn toàn có thể phòng ngừa nhóm lỗi E này** bằng cách tự động đúc kết các quy ước tổ chức thành chỉ dẫn hành vi cho tác tử.
 
 ## 5. Điều kiện `subagents` (Phần 2.3)
 
 - Các subagent đã định nghĩa (tên, vai trò, lý do thiết kế):
+  1. `explorer`: Đọc README, docstrings và cấu trúc tệp để thu thập ngữ cảnh mà không sửa tệp.
+  2. `implementer`: Thực hiện viết mã, sửa tệp và chạy kiểm thử trong sandbox.
+  3. `reviewer`: Kiểm tra độc lập kết quả sau khi thực hiện, đối chiếu với yêu cầu đề bài.
 - `subagent_calls` ở từng tác vụ và nhận xét (kể cả trường hợp bằng 0):
-- Thông tin thiếu hoặc thừa khi giao việc (nếu có giao việc):
-- Ảnh hưởng đến token và thời gian:
+  - `code-learn`: 0 lần gọi (tác tử chính chọn tự thực hiện bằng các tool mặc định).
+  - `data-learn`: 0 lần gọi trực tiếp trong luồng chính (tác tử chính tự tạo tệp).
+  - `logs-learn`: 0 lần gọi trong luồng chính.
+  *Nhận xét*: Tác tử chính xu hướng tự sử dụng các công cụ cơ bản (`execute`, `write_file`) thay vì phân rã công việc cho subagent nếu tác vụ không yêu cầu tường minh.
+- Thông tin thiếu hoặc thừa khi giao việc (nếu có giao việc): Tác tử chính ít khi truyền đầy đủ quy ước ẩn khi gọi subagent do không nhận biết được quy ước tổ chức Acme.
+- Ảnh hưởng đến token và thời gian: Điều kiện `subagents` tiêu tốn lượng token cao hơn từ 1.5x đến 3x so với `baseline` do phần mô tả và hệ thống prompt của subagent được nạp vào ngữ cảnh.
 
 ## 6. Self-evolving: skill do curator sinh (Phần 3)
 

@@ -34,5 +34,5 @@ def make_model():
     if base_url:
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(base_url=base_url, api_key=os.getenv("LAB_API_KEY") or "not-needed", model=name,
-                          temperature=temperature, timeout=120)
+                          temperature=temperature, max_tokens=2048, timeout=120)
     return init_chat_model(name, temperature=temperature)

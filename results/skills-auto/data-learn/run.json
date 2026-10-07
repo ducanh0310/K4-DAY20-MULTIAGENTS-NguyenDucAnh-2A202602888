@@ -1,0 +1,64 @@
+{
+  "task": "data-learn",
+  "condition": "skills-auto",
+  "role": "learn",
+  "error": "APIStatusError: Error code: 402 - {'error': {'message': 'This request would exceed your available credits given your current in-flight requests. Retry after in-flight requests settle, or add credits.', 'code': 402, 'metadata': {'reason': 'in_flight_budget_exhausted', 'limit_source': 'openrouter_in_flight_budget', 'remedy_hint': 'Retry after your in-flight requests settle (see the Retry-After header). Adding credits at https://openrouter.ai/settings/credits raises your in-flight budget, up to a capped ceiling.', 'headers': {'Retry-After': '120'}, 'provider_name': None}}, 'user_id': 'user_3JB1KhGJAg2lqJM80ber2IWTftj'}",
+  "timestamp": "2026-10-07T01:37:11.190090+00:00",
+  "skills_sha256": "58dbc71ca5c28adb13c15e457bd9d5dea9d5400173596ac6c84fd21b505bc535",
+  "seconds": 0.5,
+  "tokens": {
+    "input": 0,
+    "output": 0,
+    "total": 0
+  },
+  "tool_calls": 0,
+  "subagent_calls": 0,
+  "skills_read": 0,
+  "skills_modified": false,
+  "final_message": "",
+  "score": 0.0,
+  "passed": 0,
+  "total": 8,
+  "checks": [
+    {
+      "name": "north_q1_revenue",
+      "passed": false,
+      "detail": "FileNotFoundError: [Errno 2] No such file or directory: 'C:\\\\Users\\\\nguye\\\\AppData\\\\Local\\\\Temp\\\\lab_sandbox_64nvyqa7\\\\workspace\\\\answer.json'"
+    },
+    {
+      "name": "north_q1_orders",
+      "passed": false,
+      "detail": "FileNotFoundError: [Errno 2] No such file or directory: 'C:\\\\Users\\\\nguye\\\\AppData\\\\Local\\\\Temp\\\\lab_sandbox_64nvyqa7\\\\workspace\\\\answer.json'"
+    },
+    {
+      "name": "top_region",
+      "passed": false,
+      "detail": "FileNotFoundError: [Errno 2] No such file or directory: 'C:\\\\Users\\\\nguye\\\\AppData\\\\Local\\\\Temp\\\\lab_sandbox_64nvyqa7\\\\workspace\\\\answer.json'"
+    },
+    {
+      "name": "missing_amount_orders",
+      "passed": false,
+      "detail": "FileNotFoundError: [Errno 2] No such file or directory: 'C:\\\\Users\\\\nguye\\\\AppData\\\\Local\\\\Temp\\\\lab_sandbox_64nvyqa7\\\\workspace\\\\answer.json'"
+    },
+    {
+      "name": "duplicate_rows_removed",
+      "passed": false,
+      "detail": "FileNotFoundError: [Errno 2] No such file or directory: 'C:\\\\Users\\\\nguye\\\\AppData\\\\Local\\\\Temp\\\\lab_sandbox_64nvyqa7\\\\workspace\\\\answer.json'"
+    },
+    {
+      "name": "rule_money_in_cents",
+      "passed": false,
+      "detail": "FileNotFoundError: [Errno 2] No such file or directory: 'C:\\\\Users\\\\nguye\\\\AppData\\\\Local\\\\Temp\\\\lab_sandbox_64nvyqa7\\\\workspace\\\\answer.json'"
+    },
+    {
+      "name": "rule_meta_block",
+      "passed": false,
+      "detail": "FileNotFoundError: [Errno 2] No such file or directory: 'C:\\\\Users\\\\nguye\\\\AppData\\\\Local\\\\Temp\\\\lab_sandbox_64nvyqa7\\\\workspace\\\\answer.json'"
+    },
+    {
+      "name": "rule_clean_csv",
+      "passed": false,
+      "detail": "RULE: write workspace/clean.csv with the header order_id,timestamp_utc,region,amount_cents; one row per distinct order with a known amount; timestamp_utc as YYYY-MM-DDTHH:MM:SSZ (UTC); region in canonical spelling (North, South, East, West); amount in integer cents."
+    }
+  ]
+}
